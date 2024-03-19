@@ -1,0 +1,44 @@
+﻿Program.Sub.Preflight.Start
+Program.Sub.Preflight.End
+'ARC 6954
+'Customer: PTMW INC.
+
+'We need to be able to issue all of our internally manufactured parts to their parent work orders daily. We are currently doing WIP to Finished goods on the shop floor GUI for our internally manufactured parts. 
+'These parts are sitting on hand until the work order is complete and are issued at that time. We need to be able to issue on the daily basis and know/issue to the exact work order that it was produced for.
+
+'hook 28810 - issue materials
+
+'this script fires during opening issue materials and populate saved issued Job
+
+Program.Sub.Main.Start
+f.Intrinsic.Control.Try
+	v.Local.sSQL.Declare(String)
+	v.Local.sRet.Declare(String)
+	
+	f.Intrinsic.Control.If(v.Caller.Hook,=,28810)	
+		F.Intrinsic.Control.If(V.Passed.000002,>,"", "AND",Variable.Passed.000003,>,"")
+			f.Intrinsic.Control.End
+		F.Intrinsic.Control.Else
+			f.ODBC.Connection!Conx.OpenCompanyConnection
+			f.Intrinsic.String.Build("Select Top 1 RTRIM(JOB), RTRIM(SUFFIX) from GCG_6954_WO where RTRIM(GSUSER)='{0}'", v.Caller.User, v.Local.sSQL)
+			f.ODBC.Connection!conx.ExecuteAndReturn(v.Local.sSQL,v.Local.sRet)
+			f.Intrinsic.Control.If(v.Ambient.ExecuteAndReturnEOF,=,False)
+				f.Intrinsic.String.Split(v.Local.sRet,"*!*",v.Local.sRet)
+				Variable.Passed.000002.Set(v.Local.sRet(0))
+				Variable.Passed.000003.Set(v.Local.sRet(1))			
+			f.Intrinsic.Control.EndIf
+			
+			f.ODBC.Connection!Conx.Close
+			f.Intrinsic.Control.End
+			
+		F.Intrinsic.Control.EndIf
+	f.Intrinsic.Control.EndIf
+f.Intrinsic.Control.Catch
+	f.Intrinsic.UI.Msgbox(v.Ambient.ErrorDescription, "GCG_6954")
+f.Intrinsic.Control.EndTry
+Program.Sub.Main.End
+
+Program.Sub.Comments.Start
+${$5$}$3.0.0.0$}$1
+${$6$}$nle$}$20221101194557888$}$kjzCRYkA6UEoRnCwndYnRSKT8t/BDwvKTqBS7wGU//nCaQREXjzwr44Gx1S5alug
+Program.Sub.Comments.End
