@@ -1,0 +1,553 @@
+﻿Program.Sub.ScreenSU.Start
+Gui.Form..Create(BaseForm)
+Gui.Form..Caption("Manufactured-to-Job Dashboard")
+Gui.Form..Size(1024,720)
+Gui.Form..MinX(0)
+Gui.Form..MinY(0)
+Gui.Form..Position(0,0)
+Gui.Form..AlwaysOnTop(False)
+Gui.Form..FontName("Tahoma")
+Gui.Form..FontSize(8.25)
+Gui.Form..ControlBox(True)
+Gui.Form..MaxButton(True)
+Gui.Form..MinButton(True)
+Gui.Form..MousePointer(0)
+Gui.Form..Moveable(True)
+Gui.Form..Sizeable(True)
+Gui.Form..ShowInTaskBar(True)
+Gui.Form..TitleBar(True)
+Gui.Form..Event(UnLoad,Form_UnLoad)
+Gui.Form.GsgcJob.Create(GsGridControl)
+Gui.Form.GsgcJob.Enabled(True)
+Gui.Form.GsgcJob.Visible(True)
+Gui.Form.GsgcJob.Zorder(0)
+Gui.Form.GsgcJob.Size(1005,622)
+Gui.Form.GsgcJob.Position(7,63)
+Gui.Form.GsgcJob.Anchor(15)
+Gui.Form.GsgcJob.Event(RowCellClick,GsgcJob_RowCellClick)
+Gui.Form.dtpDateWIP.Create(DatePicker)
+Gui.Form.dtpDateWIP.Enabled(True)
+Gui.Form.dtpDateWIP.Visible(True)
+Gui.Form.dtpDateWIP.Zorder(0)
+Gui.Form.dtpDateWIP.Size(100,20)
+Gui.Form.dtpDateWIP.Position(19,30)
+Gui.Form.dtpDateWIP.CheckBox(False)
+Gui.Form.dtpDateWIP.FontName("Tahoma")
+Gui.Form.dtpDateWIP.FontSize(8.25)
+Gui.Form.lbl1.Create(Label,"WIP-to-FG Date:",True,81,13,0,20,14,True,0,"Tahoma",8.25,,0,0)
+Gui.Form.lbl1.BorderStyle(0)
+Gui.Form.cmdRefresh.Create(Button)
+Gui.Form.cmdRefresh.Enabled(True)
+Gui.Form.cmdRefresh.Visible(True)
+Gui.Form.cmdRefresh.Zorder(0)
+Gui.Form.cmdRefresh.Size(75,23)
+Gui.Form.cmdRefresh.Position(155,29)
+Gui.Form.cmdRefresh.Caption("REFRESH")
+Gui.Form.cmdRefresh.FontName("Tahoma")
+Gui.Form.cmdRefresh.FontSize(8.25)
+Gui.Form.cmdRefresh.Event(Click,cmdRefresh_Click)
+Gui.Form.frame1.Create(Frame)
+Gui.Form.frame1.Enabled(True)
+Gui.Form.frame1.Visible(True)
+Gui.Form.frame1.Zorder(0)
+Gui.Form.frame1.Size(142,29)
+Gui.Form.frame1.Position(755,18)
+Gui.Form.frame1.Caption("")
+Gui.Form.frame1.FontName("Tahoma")
+Gui.Form.frame1.FontSize(8.25)
+Gui.Form.optView.Create(Option)
+Gui.Form.optView.Enabled(True)
+Gui.Form.optView.Visible(True)
+Gui.Form.optView.Zorder(0)
+Gui.Form.optView.Size(65,24)
+Gui.Form.optView.Position(11,3)
+Gui.Form.optView.Caption("View")
+Gui.Form.optView.FontName("Tahoma")
+Gui.Form.optView.FontSize(8.25)
+Gui.Form.optView.Parent("frame1")
+Gui.Form.optView.Event(MouseUp,optView_MouseUp)
+Gui.Form.optView.Value(True)
+Gui.Form.optView.Anchor(9)
+Gui.Form.optIssue.Create(Option)
+Gui.Form.optIssue.Enabled(True)
+Gui.Form.optIssue.Visible(True)
+Gui.Form.optIssue.Zorder(0)
+Gui.Form.optIssue.Size(62,24)
+Gui.Form.optIssue.Position(76,3)
+Gui.Form.optIssue.Caption("Issue")
+Gui.Form.optIssue.FontName("Tahoma")
+Gui.Form.optIssue.FontSize(8.25)
+Gui.Form.optIssue.Parent("frame1")
+Gui.Form.optIssue.Event(MouseUp,optIssue_MouseUp)
+Program.Sub.ScreenSU.End
+
+'ARC 6954
+'Customer: PTMW INC.
+
+'We need to be able to issue all of our internally manufactured parts to their parent work orders daily. We are currently doing WIP to Finished goods on the shop floor GUI for our internally manufactured parts. 
+'These parts are sitting on hand until the work order is complete and are issued at that time. We need to be able to issue on the daily basis and know/issue to the exact work order that it was produced for.
+
+'This script display and manage the dashboard
+
+Program.Sub.Preflight.Start
+v.Global.bEdit.Declare(Boolean,False)
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+f.Intrinsic.Control.Try
+	Function.Intrinsic.UI.UsePixels ' Allows you to use Pixels instead of Twips throughout
+	
+	gui.Form..Show
+f.Intrinsic.Control.Catch
+	f.Intrinsic.Control.CallSub(Catching)
+f.Intrinsic.Control.EndTry
+Program.Sub.Main.End
+
+
+Program.Sub.Catching.Start
+f.Intrinsic.Control.If(v.ODBC.con.Exists)
+	f.ODBC.Connection!Con.Close
+f.Intrinsic.Control.EndIf
+f.Intrinsic.UI.Msgbox(v.Ambient.ErrorDescription)
+Program.Sub.Catching.End
+
+
+'refresh click
+'	=> get and build data for dashboard
+Program.Sub.cmdRefresh_Click.Start
+f.Intrinsic.Control.Try
+	'get data
+	gui.Form..Enabled(False)
+	f.Intrinsic.Control.CallSub(GetData)
+	
+	'format grid
+	f.Intrinsic.Control.CallSub(FormatGrid)
+	
+	gui.Form..Enabled(True)
+	
+f.Intrinsic.Control.Catch
+	f.Intrinsic.Control.CallSub(Catching)
+f.Intrinsic.Control.EndTry
+Program.Sub.cmdRefresh_Click.End
+
+'GET data
+Program.Sub.GetData.Start
+f.Intrinsic.Control.Try
+	v.Local.sDateDue.Declare(String)
+	v.Local.sSQL.Declare(String)
+	v.Local.sTemp.Declare(String)
+	v.Local.iCount.Declare(Long)
+	
+	
+	f.Intrinsic.String.Format(v.Screen.Form!dtpDateWIP.Value,"YYMMDD", v.Local.sDateDue)
+	f.Intrinsic.UI.InvokeWaitDialog("Loading...", "Building Dashboard Data...")
+	
+	'get main datatable
+	'	also generate empty columns for future use
+	f.Intrinsic.String.Build("select RTRIM(LEFT(PART,17)) PART_CHILD, RTRIM(SUBSTRING(PART,18,3)) PART_CHILD_REV, RTRIM(TRANSACTION_DESC) PART_CHILD_DESC, '' PART_DESC_EXTRA, RTRIM(PART) PARTREV, RTRIM(JOB) JOB_CHILD, RTRIM(SUFFIX) SUFFIX_CHILD, RTRIM(SEQ) SEQ_CHILD, RTRIM(JOB)+'-'+RTRIM(SUFFIX) JOB_SUFFIX, '' JOB_PARENT, '' SUFFIX_PARENT, '' SEQ_PARENT, '' PART_PARENT, '' PART_DESC_PARENT, '' JOBSUFFIX_PART, 0.0 QTY_REQUIRED, 0.0 QTY_ISSUED, 0.0 QTY_OPEN, '' VENDOR, QUANTITY from INVENTORY_HIST where SUFFIX_CHILD<>'000' and CODE_TRANSACTION = 'J52' and DATE_HISTORY = '{0}' and RTRIM(PART) in (select RTRIM(REF.PART) from V_INVENTORY_MSTR REF where KEY_SOURCE = 'F')", v.Local.sDateDue, v.Local.sSQL)
+	f.Intrinsic.Control.If(v.DataTable.dtMain.Exists)
+		f.Data.DataTable.Close("dtMain")
+	f.Intrinsic.Control.EndIf
+	
+	f.ODBC.Connection!Con.OpenCompanyConnection
+	f.Data.DataTable.CreateFromSQL("dtMain", "con", v.Local.sSQL, True)
+	f.Intrinsic.Control.If(v.DataTable.dtMain.RowCount,=,0)
+		'no inventory found, => notify and exit sub
+		f.Intrinsic.UI.Msgbox("No Inventories Found for This Date", "WIP-to-FG Not Found")
+		f.ODBC.Connection!Con.Close
+		f.Intrinsic.Control.ExitSub
+	f.Intrinsic.Control.EndIf
+	
+	
+	'PART DESC
+	'------------------------------------------------
+	f.Intrinsic.String.Build("select RTRIM(PART), RTRIM(TEXT) from INV_EXTRA_TEXT where RTRIM(PART) in (select RTRIM(PART) PARTREV from INVENTORY_HIST where SUFFIX<>'000' and CODE_TRANSACTION = 'J52' and DATE_HISTORY = '221031' and RTRIM(PART) in (select RTRIM(REF.PART) from V_INVENTORY_MSTR REF where KEY_SOURCE = 'F'))", v.Local.sDateDue, v.Local.sSQL)
+	f.Data.Dictionary.CreateFromSQL("dictPART_EXT", "con", v.Local.sSQL)
+	f.Data.Dictionary.SetDefaultReturn("dictPART_EXT", "")
+	f.Data.DataTable.FillFromDictionary("dtMain", "dictPART_EXT", "PARTREV", "PART_DESC_EXTRA")
+	f.Data.Dictionary.Close("dictPART_EXT")
+	'------------------------------------------------
+	
+	
+	'PART VENDOR
+	'------------------------------------------------
+	f.Intrinsic.String.Build("select RTRIM(PART), RTRIM(NAME_VENDOR) from INVENTORY_MST2 where RTRIM(PART) in (select RTRIM(PART) PARTREV from INVENTORY_HIST where SUFFIX<>'000' and CODE_TRANSACTION = 'J52' and DATE_HISTORY = '221031' and RTRIM(PART) in (select RTRIM(REF.PART) from V_INVENTORY_MSTR REF where KEY_SOURCE = 'F'))", v.Local.sDateDue, v.Local.sSQL)
+	f.Data.Dictionary.CreateFromSQL("dictPART_VENDOR", "con", v.Local.sSQL)
+	f.Data.Dictionary.SetDefaultReturn("dictPART_VENDOR", "")
+	f.Data.DataTable.FillFromDictionary("dtMain", "dictPART_VENDOR", "PARTREV", "VENDOR")
+	f.Data.Dictionary.Close("dictPART_VENDOR")
+	'------------------------------------------------
+	
+	
+	
+	'Query info for parent WO from JOB_HEADER
+	'	PARENT JOB
+	'	PARENT SUFFIX
+	'	PARENT PART
+	f.Intrinsic.UI.ChangeWaitStatus("Reading Parent WO...", 30)
+	f.Intrinsic.String.Build("select RTRIM(A.PARENT_WO) JOB_PARENT, RTRIM(A.PARENT_SUFFIX_PARENT) SUFFIX_PARENT, RTRIM(A.JOB) +'-'+ RTRIM(A.SUFFIX) CHILD_WO,  RTRIM(A.PARENT_WO) +'-'+ RTRIM(A.PARENT_SUFFIX_PARENT)+'-'+RTRIM(A.PART) JSP from JOB_HEADER A where RTRIM(A.JOB)+RTRIM(A.SUFFIX) in (select RTRIM(REF.JOB)+RTRIM(REF.SUFFIX) from INVENTORY_HIST REF where CODE_TRANSACTION = 'J52'  and DATE_HISTORY = '{0}' and RTRIM(REF.PART) in (select RTRIM(REF2.PART) from V_INVENTORY_MSTR REF2 where KEY_SOURCE = 'F')) and JOB_PARENT <> '' group by JOB_PARENT, SUFFIX_PARENT, CHILD_WO, JSP", v.Local.sDateDue, v.Local.sSQL)
+	f.Intrinsic.Control.If(v.DataTable.dtParent.Exists)
+		f.Data.DataTable.Close("dtParent")
+	f.Intrinsic.Control.EndIf
+	f.Data.DataTable.CreateFromSQL("dtParent", "con", v.Local.sSQL, True)
+	
+	f.Intrinsic.Control.If(v.DataTable.dtParent.RowCount,>,0)
+		f.Data.DataView.Create("dtParent", "dvParentWO")
+		f.Data.Dictionary.CreateFromDataView("dictPARENT","dtParent", "dvParentWO", "CHILD_WO", "JOB_PARENT")
+		f.Data.Dictionary.SetDefaultReturn("dictPARENT","")
+		f.Data.DataTable.FillFromDictionary("dtMain", "dictPARENT", "JOB_SUFFIX", "JOB_PARENT")
+		f.Data.Dictionary.Close("dictPARENT")
+		
+		f.Data.Dictionary.CreateFromDataView("dictPARENT","dtParent", "dvParentWO", "CHILD_WO", "SUFFIX_PARENT")
+		f.Data.Dictionary.SetDefaultReturn("dictPARENT","")
+		f.Data.DataTable.FillFromDictionary("dtMain", "dictPARENT", "JOB_SUFFIX", "SUFFIX_PARENT")
+		f.Data.Dictionary.Close("dictPARENT")
+		
+		f.Data.Dictionary.CreateFromDataView("dictPARENT","dtParent", "dvParentWO", "CHILD_WO", "JSP")
+		f.Data.Dictionary.SetDefaultReturn("dictPARENT","")
+		f.Data.DataTable.FillFromDictionary("dtMain", "dictPARENT", "JOB_SUFFIX", "JOBSUFFIX_PART")
+		f.Data.Dictionary.Close("dictPARENT")
+		
+		f.Data.DataView.Close("dtParent", "dvParentWO")
+	f.Intrinsic.Control.EndIf
+	f.Data.DataTable.AddExpressionColumn("dtMain", "JOBSUFFIX_PARENT", "String", "JOB_PARENT+'-'+SUFFIX_PARENT")
+	
+	
+	'get PART_PARENT and PART_DESC_PARENT from JOB_HEADER
+	'save list of JOBSUFFIX_PARENT to TEMP
+	'	use TEMP to query
+	'------------------------------------------------
+	f.Intrinsic.String.Build("delete from GCG_6954_TEMP where RTRIM(GSUSER)='{0}'", v.Caller.User,v.Local.sSQL)
+	f.ODBC.Connection!Con.Execute(v.Local.sSQL)
+	f.Intrinsic.String.Build("insert into GCG_6954_TEMP (GSUSER,TEMP_VAL) select '{1}', RTRIM(A.PARENT_WO) +'-'+ RTRIM(A.PARENT_SUFFIX_PARENT) JSP from JOB_HEADER A where RTRIM(A.JOB)+RTRIM(A.SUFFIX) in (select RTRIM(REF.JOB)+RTRIM(REF.SUFFIX) from INVENTORY_HIST REF where CODE_TRANSACTION = 'J52'  and DATE_HISTORY = '{0}' and RTRIM(REF.PART) in (select RTRIM(REF2.PART) from V_INVENTORY_MSTR REF2 where KEY_SOURCE = 'F')) and PARENT_WO <> '' group by JSP;", v.Local.sDateDue, v.Caller.User, v.Local.sSQL)
+	f.ODBC.Connection!Con.Execute(v.Local.sSQL)
+	f.Intrinsic.String.Build("select RTRIM(JOB)+'-'+RTRIM(SUFFIX), RTRIM(PART) from JOB_HEADER where  RTRIM(JOB)+'-'+RTRIM(SUFFIX) in (select RTRIM(TEMP_VAL) from GCG_6954_TEMP where RTRIM(GSUSER)='{0}')", v.Caller.User, v.Local.sSQL)
+	f.Data.Dictionary.CreateFromSQL("dictPARENT_PART", "con", v.Local.sSQL)
+	f.Data.Dictionary.SetDefaultReturn("dictPARENT_PART","")
+	f.Data.DataTable.FillFromDictionary("dtMain", "dictPARENT_PART", "JOBSUFFIX_PARENT", "PART_PARENT")
+	f.Data.Dictionary.Close("dictPARENT_PART")
+	
+	f.Intrinsic.String.Build("select RTRIM(JOB)+'-'+RTRIM(SUFFIX), RTRIM(DESCRIPTION) from JOB_HEADER where  RTRIM(JOB)+'-'+RTRIM(SUFFIX) in (select RTRIM(TEMP_VAL) from GCG_6954_TEMP where RTRIM(GSUSER)='{0}')", v.Caller.User, v.Local.sSQL)
+	f.Data.Dictionary.CreateFromSQL("dictPARENT_PART", "con", v.Local.sSQL)
+	f.Data.Dictionary.SetDefaultReturn("dictPARENT_PART","")
+	f.Data.DataTable.FillFromDictionary("dtMain", "dictPARENT_PART", "JOBSUFFIX_PARENT", "PART_DESC_PARENT")
+	f.Data.Dictionary.Close("dictPARENT_PART")
+	'------------------------------------------------
+	f.ODBC.Connection!Con.Close
+	
+	
+	'Query for Parent WO's SEQ from JOB_OPERATIONS
+	'save list of JOBSUFFIXPART to TEMP
+	'for this query takes a long time to execute, close and reopen new connection
+	'------------------------------------------------
+	f.ODBC.Connection!Con.OpenCompanyConnection(999)
+	f.Intrinsic.String.Build("delete from GCG_6954_TEMP where RTRIM(GSUSER)='{0}'", v.Caller.User,v.Local.sSQL)
+	f.ODBC.Connection!Con.Execute(v.Local.sSQL)
+	f.Intrinsic.String.Build("insert into GCG_6954_TEMP (GSUSER,TEMP_VAL) select '{1}', RTRIM(A.PARENT_WO) +'-'+ RTRIM(A.PARENT_SUFFIX_PARENT)+'-'+RTRIM(A.PART) JSP from JOB_HEADER A where RTRIM(A.JOB)+RTRIM(A.SUFFIX) in (select RTRIM(REF.JOB)+RTRIM(REF.SUFFIX) from INVENTORY_HIST REF where CODE_TRANSACTION = 'J52'  and DATE_HISTORY = '{0}' and RTRIM(REF.PART) in (select RTRIM(REF2.PART) from V_INVENTORY_MSTR REF2 where KEY_SOURCE = 'F')) and PARENT_WO <> '' group by JSP;", v.Local.sDateDue, v.Caller.User, v.Local.sSQL)
+	f.ODBC.Connection!Con.Execute(v.Local.sSQL)
+	
+	f.Intrinsic.UI.ChangeWaitStatus("Reading Parent WO...", 60)
+	
+	'	SEQ => fill from dict [select SEQ from JOB_OPERATIONS ]
+	f.Intrinsic.String.Build("select RTRIM(JOB)+'-'+RTRIM(SUFFIX), SEQ  from JOB_OPERATIONS where JOB+'-'+SUFFIX+'-'+RTRIM(PART) in (select RTRIM(TEMP_VAL) from GCG_6954_TEMP where RTRIM(GSUSER)='{0}')", v.Caller.User, v.Local.sSQL)
+	f.Data.Dictionary.CreateFromSQL("dictPARENTSEQ", "con", v.Local.sSQL)
+	f.Data.Dictionary.SetDefaultReturn("dictPARENTSEQ", "")
+	f.Data.DataTable.FillFromDictionary("dtMain", "dictPARENTSEQ", "JOBSUFFIX_PARENT", "SEQ_PARENT")
+	f.Data.Dictionary.Close("dictPARENTSEQ")
+	f.ODBC.Connection!Con.Close
+	'------------------------------------------------
+	
+
+	'Query issued materials from JOB_COMMITMENTS
+	'	QTY REQUIRED
+	'	QTY ISSUED
+	'	QTY OPEN
+	
+	'JOB_COMMITMENTS 
+	'	QTY_COMMITED = QTY REQUIRED
+	'	QTY_ISSUED = QTY ISSUED
+	'	QTY_COMMITED - QTY_ISSUED = QTY OPEN
+	f.Intrinsic.UI.ChangeWaitStatus("Reading Issued Materials...", 90)
+	f.ODBC.Connection!Con.OpenCompanyConnection(999)
+	f.Intrinsic.String.Build("select RTRIM(JOB)+'-'+RTRIM(SUFFIX)+'-'+RTRIM(PART) JSP, SUM(QTY_COMMITTED) SQTY_REQUIRED, SUM(QTY_ISSUED) SQTY_ISSUED, SUM(QTY_COMMITTED-QTY_ISSUED) SQTY_OPEN from JOB_COMMITMENTS where JSP in (select RTRIM(TEMP_VAL) from GCG_6954_TEMP where RTRIM(GSUSER)='{0}') group by JSP", v.Caller.User, v.Local.sSQL)
+	f.Intrinsic.Control.If(v.DataTable.dtCommit.Exists)
+		f.Data.DataTable.Close("dtCommit")
+	f.Intrinsic.Control.EndIf
+	f.Data.DataTable.CreateFromSQL("dtCommit", "con", v.Local.sSQL)
+	f.Data.DataView.Create("dtCommit", "dvCommit")
+	
+	f.Data.Dictionary.CreateFromDataView("dictCommit","dtCommit", "dvCommit","JSP", "SQTY_REQUIRED")
+	f.Data.Dictionary.SetDefaultReturn("dictCommit",0.0)
+	f.Data.DataTable.FillFromDictionary("dtMain", "dictCommit", "JOBSUFFIX_PART", "QTY_REQUIRED")
+	f.Data.Dictionary.Close("dictCommit")
+	
+	f.Data.Dictionary.CreateFromDataView("dictCommit","dtCommit", "dvCommit","JSP", "SQTY_ISSUED")
+	f.Data.Dictionary.SetDefaultReturn("dictCommit",0.0)
+	f.Data.DataTable.FillFromDictionary("dtMain", "dictCommit", "JOBSUFFIX_PART", "QTY_ISSUED")
+	f.Data.Dictionary.Close("dictCommit")
+	
+	f.Data.Dictionary.CreateFromDataView("dictCommit","dtCommit", "dvCommit","JSP", "SQTY_OPEN")
+	f.Data.Dictionary.SetDefaultReturn("dictCommit",0.0)
+	f.Data.DataTable.FillFromDictionary("dtMain", "dictCommit", "JOBSUFFIX_PART", "QTY_OPEN")
+	f.Data.Dictionary.Close("dictCommit")
+	
+	f.Data.DataView.Close("dtCommit", "dvCommit")
+	f.ODBC.Connection!Con.Close
+	
+	
+	'filtering out 0?
+	
+	f.Intrinsic.UI.CloseWaitDialog
+	
+f.Intrinsic.Control.Catch
+	f.Intrinsic.Control.CallSub(Catching)
+f.Intrinsic.Control.EndTry
+Program.Sub.GetData.End
+
+'Format Grid
+Program.Sub.FormatGrid.Start
+f.Intrinsic.Control.Try
+	gui.Form.GsgcJob.Visible(False)
+	
+	gui.Form.GsgcJob.AddGridviewFromDatatable("gvMain", "dtMain")
+	
+	gui.Form.GsgcJob.SetGridviewProperty("gvMain", v.Enum.GridViewPropertyNames!EnableAppearanceOddRow, True)
+	gui.Form.GsgcJob.SetGridviewProperty("gvMain", v.Enum.GridViewPropertyNames!ReadOnly, True)
+	gui.Form.GsgcJob.SetGridviewProperty("gvMain", v.Enum.GridViewPropertyNames!Editable, False)
+	gui.Form.GsgcJob.SetGridviewProperty("gvMain", v.Enum.GridViewPropertyNames!AllowColumnResizing, True)
+	gui.Form.GsgcJob.SetGridviewProperty("gvMain", v.Enum.GridViewPropertyNames!ColumnAutoWidth, False)
+	
+	'f.Intrinsic.String.Build("select RTRIM(LEFT(PART,17)) PART_CHILD, RTRIM(SUBSTRING(PART,18,3)) PART_CHILD_REV, RTRIM(TRANSACTION_DESC) PART_CHILD_DESC, RTRIM(PART) PARTREV, RTRIM(JOB) JOB_CHILD, RTRIM(SUFFIX) SUFFIX_CHILD, RTRIM(SEQ) SEQ_CHILD, RTRIM(JOB)+'-'+RTRIM(SUFFIX) JOB_SUFFIX, '' JOB_PARENT, '' SUFFIX_PARENT, '' SEQ_PARENT, '' PART_PARENT, '' JOBSUFFIX_PART, 0.0 QTY_REQUIRED, 0.0 QTY_ISSUED, 0.0 QTY_OPEN from INVENTORY_HIST where SUFFIX_CHILD<>'000' and CODE_TRANSACTION = 'J52' and DATE_HISTORY = '{0}' and RTRIM(PART) in (select RTRIM(REF.PART) from V_INVENTORY_MSTR REF where KEY_SOURCE = 'F')", v.Local.sDateDue, v.Local.sSQL)
+	
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PART_CHILD", v.Enum.ColumnPropertyNames!Caption, "PART")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PART_CHILD_REV", v.Enum.ColumnPropertyNames!Caption, "REV")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PART_CHILD_DESC", v.Enum.ColumnPropertyNames!Caption, "DESCRIPTION")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PARTREV", v.Enum.ColumnPropertyNames!Caption, "PART/REV")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "JOB_CHILD", v.Enum.ColumnPropertyNames!Caption, "JOB")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "SUFFIX_CHILD", v.Enum.ColumnPropertyNames!Caption, "SUFFIX")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "SEQ_CHILD", v.Enum.ColumnPropertyNames!Caption, "SEQ")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "JOB_SUFFIX", v.Enum.ColumnPropertyNames!Caption, "WO")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "JOB_PARENT", v.Enum.ColumnPropertyNames!Caption, "PARENT JOB")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "SUFFIX_PARENT", v.Enum.ColumnPropertyNames!Caption, "PARENT SUFFIX")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "SEQ_PARENT", v.Enum.ColumnPropertyNames!Caption, "PARENT SEQ")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PART_PARENT", v.Enum.ColumnPropertyNames!Caption, "PARENT PART")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "JOBSUFFIX_PART", v.Enum.ColumnPropertyNames!Caption, "JSP")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "QTY_REQUIRED", v.Enum.ColumnPropertyNames!Caption, "QTY REQUIRED")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "QTY_ISSUED", v.Enum.ColumnPropertyNames!Caption, "QTY ISSUED")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "QTY_OPEN", v.Enum.ColumnPropertyNames!Caption, "QTY OPEN")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "JOBSUFFIX_PARENT", v.Enum.ColumnPropertyNames!Caption, "PARENT WO")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PART_DESC_PARENT", v.Enum.ColumnPropertyNames!Caption, "PARENT PART DESCRIPTION")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PART_DESC_EXTRA", v.Enum.ColumnPropertyNames!Caption, "PART EXTRA DESCRIPTION")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "QUANTITY", v.Enum.ColumnPropertyNames!Caption, "QTY WIP-to-FG")
+		
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PART_CHILD", v.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PART_CHILD_REV", v.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PART_CHILD_DESC", v.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PARTREV", v.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "JOB_CHILD", v.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "SUFFIX_CHILD", v.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "SEQ_CHILD", v.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "JOB_SUFFIX", v.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "JOB_PARENT", v.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "SUFFIX_PARENT", v.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "SEQ_PARENT", v.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PART_PARENT", v.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "JOBSUFFIX_PART", v.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "QTY_REQUIRED", v.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "QTY_ISSUED", v.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "QTY_OPEN", v.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "JOBSUFFIX_PARENT", v.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PART_DESC_PARENT", v.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PART_DESC_EXTRA", v.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "VENDOR", v.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "QUANTITY", v.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PART_CHILD", v.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PART_CHILD_REV", v.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PART_CHILD_DESC", v.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PARTREV", v.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "JOB_CHILD", v.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "SUFFIX_CHILD", v.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "SEQ_CHILD", v.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "JOB_SUFFIX", v.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "JOB_PARENT", v.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "SUFFIX_PARENT", v.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "SEQ_PARENT", v.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PART_PARENT", v.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "JOBSUFFIX_PART", v.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "QTY_REQUIRED", v.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "QTY_ISSUED", v.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "QTY_OPEN", v.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "JOBSUFFIX_PARENT", v.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PART_DESC_PARENT", v.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PART_DESC_EXTRA", v.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "VENDOR", v.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "QUANTITY", v.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PART_CHILD_REV", v.Enum.ColumnPropertyNames!CellHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PART_CHILD_DESC", v.Enum.ColumnPropertyNames!CellHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PARTREV", v.Enum.ColumnPropertyNames!CellHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "JOB_CHILD", v.Enum.ColumnPropertyNames!CellHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "SUFFIX_CHILD", v.Enum.ColumnPropertyNames!CellHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "SEQ_CHILD", v.Enum.ColumnPropertyNames!CellHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "JOB_SUFFIX", v.Enum.ColumnPropertyNames!CellHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "JOB_PARENT", v.Enum.ColumnPropertyNames!CellHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "SUFFIX_PARENT", v.Enum.ColumnPropertyNames!CellHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "SEQ_PARENT", v.Enum.ColumnPropertyNames!CellHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PART_PARENT", v.Enum.ColumnPropertyNames!CellHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "JOBSUFFIX_PART", v.Enum.ColumnPropertyNames!CellHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "QTY_REQUIRED", v.Enum.ColumnPropertyNames!CellHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "QTY_ISSUED", v.Enum.ColumnPropertyNames!CellHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "QTY_OPEN", v.Enum.ColumnPropertyNames!CellHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "JOBSUFFIX_PARENT", v.Enum.ColumnPropertyNames!CellHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PART_DESC_PARENT", v.Enum.ColumnPropertyNames!CellHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PART_DESC_EXTRA", v.Enum.ColumnPropertyNames!CellHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "VENDOR", v.Enum.ColumnPropertyNames!CellHAlignment, "Center")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "QUANTITY", v.Enum.ColumnPropertyNames!CellHAlignment, "Center")
+	
+	
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PART_CHILD_REV", v.Enum.ColumnPropertyNames!MinWidth, 120)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PART_CHILD_DESC", v.Enum.ColumnPropertyNames!MinWidth, 120)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PARTREV", v.Enum.ColumnPropertyNames!MinWidth, 120)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "JOB_CHILD", v.Enum.ColumnPropertyNames!MinWidth, 120)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "SUFFIX_CHILD", v.Enum.ColumnPropertyNames!MinWidth, 120)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "SEQ_CHILD", v.Enum.ColumnPropertyNames!MinWidth, 120)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "JOB_SUFFIX", v.Enum.ColumnPropertyNames!MinWidth, 120)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "JOB_PARENT", v.Enum.ColumnPropertyNames!MinWidth, 120)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "SUFFIX_PARENT", v.Enum.ColumnPropertyNames!MinWidth, 120)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "SEQ_PARENT", v.Enum.ColumnPropertyNames!MinWidth, 120)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PART_PARENT", v.Enum.ColumnPropertyNames!MinWidth, 120)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "JOBSUFFIX_PART", v.Enum.ColumnPropertyNames!MinWidth, 120)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "QTY_REQUIRED", v.Enum.ColumnPropertyNames!MinWidth, 120)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "QTY_ISSUED", v.Enum.ColumnPropertyNames!MinWidth, 120)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "QTY_OPEN", v.Enum.ColumnPropertyNames!MinWidth, 120)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "JOBSUFFIX_PARENT", v.Enum.ColumnPropertyNames!MinWidth, 120)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PART_DESC_PARENT", v.Enum.ColumnPropertyNames!MinWidth, 120)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PART_DESC_EXTRA", v.Enum.ColumnPropertyNames!MinWidth, 120)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "VENDOR", v.Enum.ColumnPropertyNames!MinWidth, 120)
+	
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "QTY_REQUIRED", v.Enum.ColumnPropertyNames!DisplayCustomNumeric, "###,##0.###")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "QTY_ISSUED", v.Enum.ColumnPropertyNames!DisplayCustomNumeric, "###,##0.###")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "QTY_OPEN", v.Enum.ColumnPropertyNames!DisplayCustomNumeric, "###,##0.###")
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "QUANTITY", v.Enum.ColumnPropertyNames!DisplayCustomNumeric, "###,##0.###")
+	
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "JOBSUFFIX_PARENT", v.Enum.ColumnPropertyNames!CellForeColor, "Orange")
+	
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PART_DESC_EXTRA", v.Enum.ColumnPropertyNames!Visible, False)
+	gui.Form.GsgcJob.SetColumnProperty("gvMain", "PARTREV", v.Enum.ColumnPropertyNames!Visible, False)
+	
+	
+	gui.Form.GsgcJob.MainView("gvMain")
+	
+	f.Intrinsic.Control.CallSub(Deserialize)
+	
+	gui.Form.GsgcJob.Visible(True)
+	gui.Form..AlwaysOnTop(False)
+	gui.Form..AlwaysOnTop(True)
+f.Intrinsic.Control.Catch
+	f.Intrinsic.Control.CallSub(Catching)
+f.Intrinsic.Control.EndTry
+Program.Sub.FormatGrid.End
+
+
+'Cell click 
+'	Check if View or Issue
+'	Add Event Handlers
+Program.Sub.GsgcJob_RowCellClick.Start
+f.Intrinsic.Control.Try
+	v.Local.sJob.Declare(String)
+	v.Local.sSuffix.Declare(String)
+	v.Local.sSeq.Declare(String)
+	v.Local.sSQL.Declare(String)
+	v.Local.sParam.Declare(String)
+	
+	f.Intrinsic.Control.If(v.Args.Column,=,"JOBSUFFIX_PARENT")
+		gui.Form..Enabled(False)
+		gui.Form.GsgcJob.GetCellValueByColumnName("gvMain", "JOB_PARENT", v.Args.RowIndex, v.Local.sJob)
+		gui.Form.GsgcJob.GetCellValueByColumnName("gvMain", "SUFFIX_PARENT", v.Args.RowIndex, v.Local.sSuffix)
+		gui.Form.GsgcJob.GetCellValueByColumnName("gvMain", "SEQ_PARENT", v.Args.RowIndex, v.Local.sSeq)
+	
+		f.Intrinsic.Control.If(v.Global.bEdit)
+			'open material issue
+			f.ODBC.Connection!Con.OpenCompanyConnection
+			f.Intrinsic.String.Build("delete from GCG_6954_WO where RTRIM(GSUSER)='{0}'", v.Caller.User, v.Local.sSQL)	
+			f.ODBC.Connection!Con.Execute(v.Local.sSQL)
+			f.Intrinsic.String.Build("insert into GCG_6954_WO (GSUSER,JOB,SUFFIX) values ('{0}','{1}','{2}')", v.Caller.User, v.Local.sJob, v.Local.sSuffix, v.Local.sSQL)
+			f.ODBC.Connection!Con.Execute(v.Local.sSQL)
+			F.Intrinsic.Task.LaunchGSSsync("JB0075GI","-c","")
+			f.Intrinsic.String.Build("delete from GCG_6954_WO where RTRIM(GSUSER)='{0}'", v.Caller.User, v.Local.sSQL)	
+			f.ODBC.Connection!Con.Execute(v.Local.sSQL)
+			f.ODBC.Connection!Con.Close
+		f.Intrinsic.Control.Else
+			'open WO
+			f.Intrinsic.String.ConcatCallWrapperArgs(7,v.Local.sJob, v.Local.sSuffix,"A", v.Local.sParam)
+			f.Global.General.CallWrapperSync(450000, v.Local.sParam)
+		f.Intrinsic.Control.EndIf
+	f.Intrinsic.Control.EndIf
+		
+		gui.Form..Enabled(True)
+		gui.Form..AlwaysOnTop(False)
+		gui.Form..AlwaysOnTop(True)
+f.Intrinsic.Control.Catch
+	f.Intrinsic.Control.CallSub(Catching)
+	gui.Form..Enabled(True)
+f.Intrinsic.Control.EndTry
+Program.Sub.GsgcJob_RowCellClick.End
+
+
+Program.Sub.placeholder.Start
+f.Intrinsic.Control.Try
+
+f.Intrinsic.Control.Catch
+	f.Intrinsic.Control.CallSub(Catching)
+f.Intrinsic.Control.EndTry
+Program.Sub.placeholder.End
+
+Program.Sub.Serialize.Start
+F.Intrinsic.Control.Try
+	V.Local.sSerialize.Declare(String)
+	gui.Form.GsgcJob.Serialize("gvMain",V.Local.sSerialize)
+	F.Global.Registry.AddValue(V.Caller.User,V.Caller.CompanyCode,"gvMain",6954,1006,False,"Serialize",False,0,-999.0,1/1/1980,12:00:00 AM,V.Local.sSerialize)
+
+F.Intrinsic.Control.Catch
+	f.Intrinsic.Control.CallSub(Catching)
+F.Intrinsic.Control.EndTry
+Program.Sub.Serialize.End
+
+Program.Sub.Deserialize.Start
+F.Intrinsic.Control.Try
+	V.Local.sSerialize.Declare(String)
+	F.Global.Registry.ReadValue(V.Caller.User,V.Caller.CompanyCode,"gvMain",6954,1006,6,"",V.Local.sSerialize)
+	F.Intrinsic.Control.If(V.Local.sSerialize.Trim,<>,"")
+		gui.Form.GsgcJob.Deserialize(V.Local.sSerialize)
+	F.Intrinsic.Control.EndIf
+F.Intrinsic.Control.Catch
+	f.Intrinsic.Control.CallSub(Catching)
+F.Intrinsic.Control.EndTry
+Program.Sub.Deserialize.End
+
+Program.Sub.optView_MouseUp.Start
+f.Intrinsic.Control.Try
+	v.Global.bEdit.Set(v.Screen.Form!optIssue.Value)
+f.Intrinsic.Control.Catch
+	f.Intrinsic.Control.CallSub(Catching)
+f.Intrinsic.Control.EndTry
+Program.Sub.optView_MouseUp.End
+
+Program.Sub.optIssue_MouseUp.Start
+f.Intrinsic.Control.Try
+	v.Global.bEdit.Set(v.Screen.Form!optIssue.Value)
+f.Intrinsic.Control.Catch
+	f.Intrinsic.Control.CallSub(Catching)
+f.Intrinsic.Control.EndTry
+Program.Sub.optIssue_MouseUp.End
+
+Program.Sub.Form_UnLoad.Start
+f.Intrinsic.Control.CallSub(Serialize)
+f.Intrinsic.Control.End
+Program.Sub.Form_UnLoad.End
+
+Program.Sub.Comments.Start
+${$5$}$3.0.0.0$}$1
+${$6$}$nle$}$20221102093835771$}$kjzCRYkA6UEoRnCwndYnRSKT8t/BDwvKTS5EoOVBA4c+G4sfR8ekyiTyqoW4sw5b
+Program.Sub.Comments.End
